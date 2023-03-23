@@ -1,6 +1,10 @@
 import time
 from pymavlink import mavutil
 
+def is_vehicle_armed(vehicle):
+    armed_status = vehicle.recv_match(type='HEARTBEAT', blocking=True).base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED
+    return bool(armed_status)
+
 # Create a connection to the simulated plane
 connection_string = "udp:127.0.0.1:14550"
 print(f"Connecting to the simulated plane at {connection_string}")
@@ -30,23 +34,29 @@ while True:
             vehicle.mav.set_mode_send(vehicle.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, 4)
             time.sleep(1)
 
-
     # Arm the vehicle
-    print("Arming the vehicle")
-    vehicle.mav.command_long_send(
-        vehicle.target_system,
-        vehicle.target_component,
-        mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
-        0,
-        1, 0, 0, 0, 0, 0, 0
-    )
+    arming_attempts = 0
+    max_arming_attempts = 5
 
-    time.sleep(1)
+    while not is_vehicle_armed(vehicle):
+        if arming_attempts >= max_arming_attempts:
+            print("Failed to arm vehicle after multiple attempts. Exiting.")
+            break
 
-    # Monitor the arming status
-    print("Checking arming status")
-    arming_status = vehicle.recv_match(type='HEARTBEAT', blocking=True).base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED
-    if arming_status:
+        print("Arming the vehicle (attempt {})".format(arming_attempts + 1))
+        vehicle.mav.command_long_send(
+            vehicle.target_system,
+            vehicle.target_component,
+            mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
+            0,
+            1, 0, 0, 0, 0, 0, 0
+        )
+
+        arming_attempts += 1
+        time.sleep(2)  # Increase the sleep time to give more time for the vehicle to arm
+
+    if is_vehicle_armed(vehicle):
         print("Vehicle armed successfully!")
+        break  # Exit the loop since the vehicle is armed
     else:
         print("Arming failed. Retrying...")
